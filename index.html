@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aplikasi Video Call</title>
-    <!-- Memuat Library PeerJS -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         body {
@@ -15,57 +15,61 @@
             margin: 0;
             padding: 20px;
         }
+
         .container {
             max-width: 800px;
             margin: auto;
             background: #1e1e1e;
             padding: 20px;
             border-radius: 10px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
         }
+
         .info-panel {
             background: #2a2a2a;
             padding: 15px;
             border-radius: 8px;
             margin-bottom: 20px;
         }
+
         .id-highlight {
             color: #00ffcc;
             font-size: 24px;
             font-weight: bold;
             letter-spacing: 2px;
         }
+
         .input-group {
             margin-top: 15px;
         }
+
         input {
             padding: 10px;
             width: 60%;
-            border: none;
             border-radius: 5px;
-            font-size: 16px;
         }
+
         button {
             padding: 10px 20px;
             background-color: #007bff;
             color: white;
             border: none;
             border-radius: 5px;
-            font-size: 16px;
             cursor: pointer;
             font-weight: bold;
         }
-        button:hover { background-color: #0056b3; }
+
         .video-wrapper {
             display: flex;
             justify-content: center;
             gap: 20px;
             flex-wrap: wrap;
         }
+
         .video-box {
             flex: 1;
             min-width: 300px;
         }
+
         video {
             width: 100%;
             background-color: #000;
@@ -74,27 +78,26 @@
         }
     </style>
 </head>
+
 <body>
 
     <div class="container">
         <h2>WebRTC Video Call</h2>
-        
-        <!-- Panel Informasi ID -->
+
         <div class="info-panel">
-            <p>Berikan ID ini ke teman Anda agar mereka bisa menelepon:</p>
+            <p>ID Perangkat Anda:</p>
             <div class="id-highlight" id="my-id">Memuat ID...</div>
-            
+
             <div class="input-group">
-                <input type="text" id="remote-id" placeholder="Masukkan ID teman di sini">
+                <input type="text" id="remote-id" placeholder="Masukkan ID teman">
                 <button id="call-btn">Panggil</button>
             </div>
+            <p id="status-koneksi" style="color: yellow; font-size: 14px; margin-top:-2;"></p>
         </div>
 
-        <!-- Area Video -->
         <div class="video-wrapper">
             <div class="video-box">
                 <h3>Kamera Anda</h3>
-                <!-- muted wajib untuk video lokal agar suara tidak mantul -->
                 <video id="local-video" autoplay playsinline muted></video>
             </div>
             <div class="video-box">
@@ -105,65 +108,67 @@
     </div>
 
     <script>
-        // Mengambil elemen HTML
         const localVideo = document.getElementById('local-video');
         const remoteVideo = document.getElementById('remote-video');
         const myIdElement = document.getElementById('my-id');
         const remoteIdInput = document.getElementById('remote-id');
         const callBtn = document.getElementById('call-btn');
+        const statusKoneksi = document.getElementById('status-koneksi');
 
-        let localStream;
+        let localStream = null;
 
-        // 1. Menyalakan Kamera dan Mikrofon
+        // 1. Menyalakan Kamera
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
             .then(stream => {
                 localStream = stream;
                 localVideo.srcObject = stream;
+                statusKoneksi.innerText = "Kamera & Mikrofon siap!";
             })
             .catch(error => {
-                console.error("Gagal akses kamera:", error);
-                alert("Tolong izinkan akses kamera dan mikrofon di browser Anda!");
+                alert("Gagal mengakses kamera/mikrofon. Pastikan Anda sudah memberikan izin.");
+                statusKoneksi.innerText = "Error: Kamera diblokir.";
             });
 
-        // 2. Inisialisasi PeerJS (Terhubung ke server mak comblang)
+        // 2. Inisialisasi PeerJS
         const peer = new Peer();
 
-        // Saat berhasil terhubung, server akan memberikan ID unik acak
         peer.on('open', id => {
             myIdElement.innerText = id;
         });
 
-        // 3. Logika Menjawab Panggilan (Ketika teman menelepon Anda)
+        // 3. Menangani Error PeerJS (PENTING)
+        peer.on('error', err => {
+            console.error(err);
+            alert("Terjadi Error: " + err.type + "\n" + err.message);
+            statusKoneksi.innerText = "Gagal memanggil. Cek Pop-up Error.";
+        });
+
+        // 4. Logika Menerima Panggilan
         peer.on('call', call => {
-            // Meminta konfirmasi angkat telepon
             const angkat = confirm("Ada panggilan masuk! Angkat?");
             if (angkat) {
-                // Jawab dengan mengirimkan video/audio kita
                 call.answer(localStream);
-                
-                // Menerima video/audio dari teman dan menampilkannya
                 call.on('stream', remoteStream => {
                     remoteVideo.srcObject = remoteStream;
+                    // Baris di bawah ini wajib ada untuk memaksa video berputar di HP
+                    remoteVideo.play().catch(e => console.log("Gagal putar otomatis:", e));
                 });
             }
         });
 
-        // 4. Logika Melakukan Panggilan (Ketika Anda klik tombol Panggil)
+        // 5. Logika Melakukan Panggilan
         callBtn.addEventListener('click', () => {
             const remoteId = remoteIdInput.value.trim();
-            if (!remoteId) {
-                alert("Masukkan ID teman terlebih dahulu!");
-                return;
-            }
+            if (!remoteId) return;
 
-            // Melakukan panggilan ke ID teman dengan mengirim video/audio kita
             const call = peer.call(remoteId, localStream);
-
-            // Menerima video/audio dari teman setelah dia mengangkatnya
             call.on('stream', remoteStream => {
                 remoteVideo.srcObject = remoteStream;
+                // Wajib ada juga di sini
+                remoteVideo.play().catch(e => console.log("Gagal putar otomatis:", e));
             });
         });
     </script>
 </body>
+
 </html>
