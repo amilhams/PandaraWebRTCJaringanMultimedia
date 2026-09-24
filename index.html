@@ -305,24 +305,7 @@
 
                     currentCall = call;
                     call.answer(localStream);
-                    setStatus("Terhubung dengan pemanggil!", 'success');
-                    showCallActiveUI();
-
-                    call.on('stream', remoteStream => {
-                        remoteVideo.srcObject = remoteStream;
-                        remoteVideo.play().catch(e => console.log("Auto-play blocked:", e));
-                    });
-
-                    call.on('close', () => {
-                        setStatus("Panggilan telah diakhiri.", 'info');
-                        resetCallUI();
-                    });
-
-                    call.on('error', err => {
-                        console.error("Call error:", err);
-                        setStatus("Terjadi kesalahan pada panggilan.", 'error');
-                        resetCallUI();
-                    });
+                    setupCallListeners(call);
                 }
             });
         }
@@ -352,24 +335,69 @@
 
             const call = peer.call(remoteId, localStream);
             currentCall = call;
+            setupCallListeners(call);
+        });
 
+        // Handler terpusat untuk alur panggilan
+        function setupCallListeners(call) {
+            showCallActiveUI();
+            setStatus("Menghubungkan media (ICE Candidate)...", 'info');
+
+            // Terima remote stream
             call.on('stream', remoteStream => {
-                setStatus("Panggilan terhubung!", 'success');
-                showCallActiveUI();
+                console.log("Remote stream diterima:", remoteStream);
                 remoteVideo.srcObject = remoteStream;
-                remoteVideo.play().catch(e => console.log("Auto-play blocked:", e));
+                
+                // Coba putar video
+                playRemoteVideo();
             });
 
+            // Pantau status koneksi WebRTC P2P (ICE Connection State)
+            if (call.peerConnection) {
+                call.peerConnection.oniceconnectionstatechange = () => {
+                    const state = call.peerConnection.iceConnectionState;
+                    console.log("ICE Connection State:", state);
+                    if (state === 'connected' || state === 'completed') {
+                        setStatus("Panggilan terhubung! Video & Audio aktif.", 'success');
+                    } else if (state === 'checking') {
+                        setStatus("Sedang memverifikasi jaringan (Checking ICE)...", 'info');
+                    } else if (state === 'failed') {
+                        setStatus("Gagal terhubung (P2P terblokir / Masalah Firewall/NAT).", 'error');
+                    } else if (state === 'disconnected') {
+                        setStatus("Koneksi P2P terputus.", 'error');
+                    }
+                };
+            }
+
             call.on('close', () => {
-                setStatus("Panggilan diakhiri oleh penerima.", 'info');
+                setStatus("Panggilan telah diakhiri.", 'info');
                 resetCallUI();
             });
 
             call.on('error', err => {
                 console.error("Call error:", err);
-                setStatus("Gagal menghubungkan panggilan.", 'error');
+                setStatus("Terjadi kesalahan pada panggilan.", 'error');
                 resetCallUI();
             });
+        }
+
+        // Memutar video teman & menangani pembatasan autoplay browser
+        function playRemoteVideo() {
+            remoteVideo.play()
+                .then(() => {
+                    setStatus("Panggilan terhubung! Video & Audio aktif.", 'success');
+                })
+                .catch(e => {
+                    console.warn("Autoplay terblokir oleh browser:", e);
+                    setStatus("Klik pada kotak 'Kamera Teman' untuk memutar video!", 'info');
+                });
+        }
+
+        // Izinkan klik manual pada video teman jika terblokir autoplay
+        remoteVideo.addEventListener('click', () => {
+            if (remoteVideo.srcObject) {
+                playRemoteVideo();
+            }
         });
 
         // 6. Logika Menutup Panggilan (Hang Up)
