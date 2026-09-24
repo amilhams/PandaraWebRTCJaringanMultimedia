@@ -211,10 +211,75 @@
             font-size: 48px;
             margin-bottom: 8px;
         }
+
+        /* Modal Incoming Call Non-Blocking */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.85);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-card {
+            background: #1e293b;
+            padding: 30px;
+            border-radius: 16px;
+            border: 1px solid #38bdf8;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
+        }
+
+        .modal-card h3 {
+            margin-top: 0;
+            color: #38bdf8;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .btn-success {
+            padding: 12px 24px;
+            background-color: #16a34a;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 15px;
+        }
+
+        .btn-success:hover {
+            background-color: #15803d;
+        }
     </style>
 </head>
 
 <body>
+    <!-- Modal Panggilan Masuk Non-Blocking -->
+    <div class="modal-overlay" id="incoming-modal">
+        <div class="modal-card">
+            <h3>📞 Panggilan Masuk!</h3>
+            <p id="incoming-caller-id" style="word-break: break-all; color:#94a3b8; font-size:14px;"></p>
+            <div class="modal-actions">
+                <button class="btn-success" id="accept-call-btn">Angkat</button>
+                <button class="btn-danger" id="reject-call-btn" style="display:inline-block;">Tolak</button>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <h2>WebRTC Video Call</h2>
 
@@ -261,6 +326,13 @@
         const copyBtn = document.getElementById('copy-btn');
         const statusKoneksi = document.getElementById('status-koneksi');
 
+        // Modal Elements
+        const incomingModal = document.getElementById('incoming-modal');
+        const incomingCallerId = document.getElementById('incoming-caller-id');
+        const acceptCallBtn = document.getElementById('accept-call-btn');
+        const rejectCallBtn = document.getElementById('reject-call-btn');
+
+        let pendingCall = null;
         let localStream = null;
         let currentCall = null;
         let currentDataConn = null;
@@ -295,16 +367,16 @@
                 setStatus("Error: Akses Kamera/Mikrofon Ditolak!", 'error');
             });
 
-        // 2. Inisialisasi PeerJS dengan STUN & TURN Server Metered.ca
+        // 2. Inisialisasi PeerJS dengan STUN & TURN Server Metered.ca + Google STUN
         let peer = null;
 
         function initPeer() {
             peer = new Peer({
                 config: {
                     iceServers: [
-                        {
-                            urls: "stun:stun.relay.metered.ca:80",
-                        },
+                        { urls: "stun:stun.l.google.com:19302" },
+                        { urls: "stun:stun1.l.google.com:19302" },
+                        { urls: "stun:stun.relay.metered.ca:80" },
                         {
                             urls: "turn:global.relay.metered.ca:80",
                             username: "a4834178454fc9035e47ee78",
@@ -356,7 +428,7 @@
                 endCall(false);
             });
 
-            // 4. Logika Menerima Panggilan
+            // 4. Logika Menerima Panggilan Non-Blocking Modal
             peer.on('call', call => {
                 logDiag("Panggilan masuk dari ID: " + call.peer);
                 if (!localStream) {
@@ -364,18 +436,32 @@
                     return;
                 }
 
-                const angkat = confirm("Ada panggilan masuk dari " + call.peer + "! Angkat panggilan?");
-                if (angkat) {
-                    if (currentCall) endCall(false);
-
-                    currentCall = call;
-                    call.answer(localStream);
-                    setupCallListeners(call);
-                } else {
-                    logDiag("Panggilan ditolak oleh pengguna lokal.");
-                }
+                pendingCall = call;
+                incomingCallerId.innerText = "Dari ID: " + call.peer;
+                incomingModal.style.display = 'flex';
             });
         }
+
+        // Action Modal Angkat / Tolak
+        acceptCallBtn.addEventListener('click', () => {
+            incomingModal.style.display = 'none';
+            if (pendingCall) {
+                if (currentCall) endCall(false);
+                currentCall = pendingCall;
+                currentCall.answer(localStream);
+                setupCallListeners(currentCall);
+                pendingCall = null;
+            }
+        });
+
+        rejectCallBtn.addEventListener('click', () => {
+            incomingModal.style.display = 'none';
+            if (pendingCall) {
+                pendingCall.close();
+                pendingCall = null;
+                logDiag("Panggilan ditolak oleh pengguna lokal.");
+            }
+        });
 
         // 5. Logika Melakukan Panggilan
         callBtn.addEventListener('click', () => {
