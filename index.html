@@ -4,58 +4,155 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aplikasi Video Call</title>
+    <title>Aplikasi Video Call WebRTC</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            background-color: #121212;
-            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
             text-align: center;
             margin: 0;
             padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .container {
-            max-width: 800px;
-            margin: auto;
-            background: #1e1e1e;
-            padding: 20px;
-            border-radius: 10px;
+            width: 100%;
+            max-width: 900px;
+            background: #1e293b;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+            border: 1px solid #334155;
+        }
+
+        h2 {
+            margin-top: 0;
+            color: #38bdf8;
+            font-size: 28px;
+            letter-spacing: 0.5px;
         }
 
         .info-panel {
-            background: #2a2a2a;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
+            background: #0f172a;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            border: 1px solid #334155;
+        }
+
+        .id-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin: 10px 0 15px;
+            flex-wrap: wrap;
         }
 
         .id-highlight {
-            color: #00ffcc;
-            font-size: 24px;
+            color: #38bdf8;
+            font-size: 22px;
             font-weight: bold;
-            letter-spacing: 2px;
+            letter-spacing: 1.5px;
+            background: #1e293b;
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px dashed #38bdf8;
+            user-select: all;
+        }
+
+        .btn-copy {
+            background-color: #334155;
+            color: #f8fafc;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background-color 0.2s;
+        }
+
+        .btn-copy:hover {
+            background-color: #475569;
         }
 
         .input-group {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
             margin-top: 15px;
+            flex-wrap: wrap;
         }
 
         input {
-            padding: 10px;
-            width: 60%;
-            border-radius: 5px;
+            padding: 12px 16px;
+            width: 320px;
+            max-width: 100%;
+            border-radius: 8px;
+            border: 1px solid #475569;
+            background-color: #1e293b;
+            color: #fff;
+            font-size: 15px;
+            outline: none;
+            transition: border-color 0.2s;
         }
 
-        button {
-            padding: 10px 20px;
-            background-color: #007bff;
+        input:focus {
+            border-color: #38bdf8;
+        }
+
+        button.btn-primary {
+            padding: 12px 24px;
+            background-color: #0284c7;
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
-            font-weight: bold;
+            font-weight: 600;
+            font-size: 15px;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+
+        button.btn-primary:hover {
+            background-color: #0369a1;
+        }
+
+        button.btn-primary:disabled {
+            background-color: #475569;
+            cursor: not-allowed;
+        }
+
+        button.btn-danger {
+            padding: 12px 24px;
+            background-color: #e11d48;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 15px;
+            display: none;
+            transition: background-color 0.2s;
+        }
+
+        button.btn-danger:hover {
+            background-color: #be123c;
+        }
+
+        #status-koneksi {
+            font-weight: 500;
+            font-size: 14px;
+            margin-top: 12px;
+            min-height: 20px;
         }
 
         .video-wrapper {
@@ -67,14 +164,26 @@
 
         .video-box {
             flex: 1;
-            min-width: 300px;
+            min-width: 280px;
+            background: #0f172a;
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid #334155;
+        }
+
+        .video-box h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 16px;
+            color: #94a3b8;
         }
 
         video {
             width: 100%;
+            height: 240px;
             background-color: #000;
-            border-radius: 10px;
-            border: 2px solid #444;
+            border-radius: 8px;
+            object-fit: cover;
         }
     </style>
 </head>
@@ -85,14 +194,18 @@
         <h2>WebRTC Video Call</h2>
 
         <div class="info-panel">
-            <p>ID Perangkat Anda:</p>
-            <div class="id-highlight" id="my-id">Memuat ID...</div>
+            <p style="margin:0; color:#94a3b8; font-size:14px;">ID Perangkat Anda:</p>
+            <div class="id-container">
+                <span class="id-highlight" id="my-id">Memuat ID...</span>
+                <button class="btn-copy" id="copy-btn" title="Salin ID ke Clipboard">📋 Salin</button>
+            </div>
 
             <div class="input-group">
                 <input type="text" id="remote-id" placeholder="Masukkan ID teman">
-                <button id="call-btn">Panggil</button>
+                <button class="btn-primary" id="call-btn">Panggil</button>
+                <button class="btn-danger" id="hangup-btn">Tutup Panggilan</button>
             </div>
-            <p id="status-koneksi" style="color: yellow; font-size: 14px; margin-top:-2;"></p>
+            <p id="status-koneksi" style="color: #facc15;"></p>
         </div>
 
         <div class="video-wrapper">
@@ -113,62 +226,191 @@
         const myIdElement = document.getElementById('my-id');
         const remoteIdInput = document.getElementById('remote-id');
         const callBtn = document.getElementById('call-btn');
+        const hangupBtn = document.getElementById('hangup-btn');
+        const copyBtn = document.getElementById('copy-btn');
         const statusKoneksi = document.getElementById('status-koneksi');
 
         let localStream = null;
+        let currentCall = null;
 
-        // 1. Menyalakan Kamera
+        // Update status visual
+        function setStatus(msg, type = 'info') {
+            statusKoneksi.innerText = msg;
+            if (type === 'error') statusKoneksi.style.color = '#f87171';
+            else if (type === 'success') statusKoneksi.style.color = '#4ade80';
+            else statusKoneksi.style.color = '#facc15';
+        }
+
+        setStatus("Mengakses kamera & mikrofon...");
+
+        // 1. Menyalakan Kamera & Mikrofon
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
             .then(stream => {
                 localStream = stream;
                 localVideo.srcObject = stream;
-                statusKoneksi.innerText = "Kamera & Mikrofon siap!";
+                setStatus("Kamera & Mikrofon siap! Menghubungkan ke server PeerJS...");
+                initPeer();
             })
             .catch(error => {
-                alert("Gagal mengakses kamera/mikrofon. Pastikan Anda sudah memberikan izin.");
-                statusKoneksi.innerText = "Error: Kamera diblokir.";
+                console.error("Gagal getMedia:", error);
+                alert("Gagal mengakses kamera/mikrofon. Harap berikan izin pada browser Anda.");
+                setStatus("Error: Akses Kamera/Mikrofon Ditolak!", 'error');
             });
 
-        // 2. Inisialisasi PeerJS
-        const peer = new Peer();
+        // 2. Inisialisasi PeerJS dengan STUN Server (Agar P2P Terhubung Lintas Jaringan)
+        let peer = null;
 
-        peer.on('open', id => {
-            myIdElement.innerText = id;
-        });
+        function initPeer() {
+            peer = new Peer({
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' },
+                        { urls: 'stun:stun3.l.google.com:19302' },
+                        { urls: 'stun:stun4.l.google.com:19302' }
+                    ]
+                }
+            });
 
-        // 3. Menangani Error PeerJS (PENTING)
-        peer.on('error', err => {
-            console.error(err);
-            alert("Terjadi Error: " + err.type + "\n" + err.message);
-            statusKoneksi.innerText = "Gagal memanggil. Cek Pop-up Error.";
-        });
+            peer.on('open', id => {
+                myIdElement.innerText = id;
+                setStatus("Siap melakukan atau menerima panggilan.", 'success');
+            });
 
-        // 4. Logika Menerima Panggilan
-        peer.on('call', call => {
-            const angkat = confirm("Ada panggilan masuk! Angkat?");
-            if (angkat) {
-                call.answer(localStream);
-                call.on('stream', remoteStream => {
-                    remoteVideo.srcObject = remoteStream;
-                    // Baris di bawah ini wajib ada untuk memaksa video berputar di HP
-                    remoteVideo.play().catch(e => console.log("Gagal putar otomatis:", e));
-                });
-            }
-        });
+            // 3. Menangani Error PeerJS
+            peer.on('error', err => {
+                console.error("PeerJS Error:", err);
+                if (err.type === 'peer-unavailable') {
+                    setStatus("ID Teman tidak ditemukan atau tidak aktif!", 'error');
+                    alert("Panggilan Gagal: ID Teman tidak ditemukan atau tidak online.");
+                } else if (err.type === 'unavailable-id') {
+                    setStatus("ID sudah digunakan oleh sesi lain.", 'error');
+                } else {
+                    setStatus("Error Koneksi: " + err.type, 'error');
+                }
+                resetCallUI();
+            });
+
+            // 4. Logika Menerima Panggilan
+            peer.on('call', call => {
+                if (!localStream) {
+                    alert("Kamera Anda belum siap.");
+                    return;
+                }
+
+                const angkat = confirm("Ada panggilan masuk! Angkat panggilan?");
+                if (angkat) {
+                    if (currentCall) currentCall.close();
+
+                    currentCall = call;
+                    call.answer(localStream);
+                    setStatus("Terhubung dengan pemanggil!", 'success');
+                    showCallActiveUI();
+
+                    call.on('stream', remoteStream => {
+                        remoteVideo.srcObject = remoteStream;
+                        remoteVideo.play().catch(e => console.log("Auto-play blocked:", e));
+                    });
+
+                    call.on('close', () => {
+                        setStatus("Panggilan telah diakhiri.", 'info');
+                        resetCallUI();
+                    });
+
+                    call.on('error', err => {
+                        console.error("Call error:", err);
+                        setStatus("Terjadi kesalahan pada panggilan.", 'error');
+                        resetCallUI();
+                    });
+                }
+            });
+        }
 
         // 5. Logika Melakukan Panggilan
         callBtn.addEventListener('click', () => {
             const remoteId = remoteIdInput.value.trim();
-            if (!remoteId) return;
+            if (!remoteId) {
+                alert("Masukkan ID teman terlebih dahulu!");
+                return;
+            }
+
+            if (!localStream) {
+                alert("Kamera belum siap. Harap izinkan akses kamera & mikrofon.");
+                return;
+            }
+
+            if (remoteId === myIdElement.innerText) {
+                alert("Anda tidak dapat memanggil ID Anda sendiri!");
+                return;
+            }
+
+            setStatus("Memanggil " + remoteId + "...", 'info');
+            callBtn.disabled = true;
+
+            if (currentCall) currentCall.close();
 
             const call = peer.call(remoteId, localStream);
+            currentCall = call;
+
             call.on('stream', remoteStream => {
+                setStatus("Panggilan terhubung!", 'success');
+                showCallActiveUI();
                 remoteVideo.srcObject = remoteStream;
-                // Wajib ada juga di sini
-                remoteVideo.play().catch(e => console.log("Gagal putar otomatis:", e));
+                remoteVideo.play().catch(e => console.log("Auto-play blocked:", e));
             });
+
+            call.on('close', () => {
+                setStatus("Panggilan diakhiri oleh penerima.", 'info');
+                resetCallUI();
+            });
+
+            call.on('error', err => {
+                console.error("Call error:", err);
+                setStatus("Gagal menghubungkan panggilan.", 'error');
+                resetCallUI();
+            });
+        });
+
+        // 6. Logika Menutup Panggilan (Hang Up)
+        hangupBtn.addEventListener('click', () => {
+            if (currentCall) {
+                currentCall.close();
+                currentCall = null;
+            }
+            setStatus("Panggilan diakhiri.", 'info');
+            resetCallUI();
+        });
+
+        // 7. Utility UI
+        function showCallActiveUI() {
+            callBtn.style.display = 'none';
+            hangupBtn.style.display = 'inline-block';
+            remoteIdInput.disabled = true;
+        }
+
+        function resetCallUI() {
+            callBtn.style.display = 'inline-block';
+            callBtn.disabled = false;
+            hangupBtn.style.display = 'none';
+            remoteIdInput.disabled = false;
+            remoteVideo.srcObject = null;
+            currentCall = null;
+        }
+
+        // Copy ID Button
+        copyBtn.addEventListener('click', () => {
+            const idText = myIdElement.innerText;
+            if (idText && idText !== 'Memuat ID...') {
+                navigator.clipboard.writeText(idText).then(() => {
+                    copyBtn.innerText = "✓ Tersalin!";
+                    setTimeout(() => copyBtn.innerText = "📋 Salin", 2000);
+                }).catch(err => {
+                    console.error("Gagal menyalin:", err);
+                });
+            }
         });
     </script>
 </body>
 
-</html>
+</html>
