@@ -257,19 +257,40 @@
                 setStatus("Error: Akses Kamera/Mikrofon Ditolak!", 'error');
             });
 
-        // 2. Inisialisasi PeerJS dengan STUN Server (Agar P2P Terhubung Lintas Jaringan)
+        // 2. Inisialisasi PeerJS dengan STUN & TURN Server (Sistem Anti-Block Firewall & NAT)
         let peer = null;
 
         function initPeer() {
             peer = new Peer({
                 config: {
                     iceServers: [
+                        // Google STUN Servers
                         { urls: 'stun:stun.l.google.com:19302' },
                         { urls: 'stun:stun1.l.google.com:19302' },
                         { urls: 'stun:stun2.l.google.com:19302' },
                         { urls: 'stun:stun3.l.google.com:19302' },
-                        { urls: 'stun:stun4.l.google.com:19302' }
-                    ]
+                        { urls: 'stun:stun4.l.google.com:19302' },
+                        // Mozilla & Twilio STUN Servers
+                        { urls: 'stun:stun.services.mozilla.com' },
+                        { urls: 'stun:global.stun.twilio.com:3478' },
+                        // OpenRelay Free TURN Servers (Estafet data P2P jika UDP/NAT terblokir)
+                        {
+                            urls: 'turn:openrelay.metered.ca:80',
+                            username: 'openrelay',
+                            credential: 'openrelay'
+                        },
+                        {
+                            urls: 'turn:openrelay.metered.ca:443',
+                            username: 'openrelay',
+                            credential: 'openrelay'
+                        },
+                        {
+                            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                            username: 'openrelay',
+                            credential: 'openrelay'
+                        }
+                    ],
+                    iceCandidatePoolSize: 10
                 }
             });
 
@@ -341,30 +362,37 @@
         // Handler terpusat untuk alur panggilan
         function setupCallListeners(call) {
             showCallActiveUI();
-            setStatus("Menghubungkan media (ICE Candidate)...", 'info');
+            setStatus("Menghubungkan media (Mencari Jalur P2P/TURN)...", 'info');
 
             // Terima remote stream
             call.on('stream', remoteStream => {
                 console.log("Remote stream diterima:", remoteStream);
                 remoteVideo.srcObject = remoteStream;
-                
-                // Coba putar video
                 playRemoteVideo();
             });
 
             // Pantau status koneksi WebRTC P2P (ICE Connection State)
             if (call.peerConnection) {
-                call.peerConnection.oniceconnectionstatechange = () => {
-                    const state = call.peerConnection.iceConnectionState;
+                const pc = call.peerConnection;
+
+                pc.onicecandidate = event => {
+                    if (event.candidate) {
+                        console.log("ICE Candidate ditemukan:", event.candidate.type, event.candidate.candidate);
+                    }
+                };
+
+                pc.oniceconnectionstatechange = () => {
+                    const state = pc.iceConnectionState;
                     console.log("ICE Connection State:", state);
                     if (state === 'connected' || state === 'completed') {
                         setStatus("Panggilan terhubung! Video & Audio aktif.", 'success');
                     } else if (state === 'checking') {
-                        setStatus("Sedang memverifikasi jaringan (Checking ICE)...", 'info');
+                        setStatus("Sedang memverifikasi jalur P2P / STUN / TURN...", 'info');
                     } else if (state === 'failed') {
-                        setStatus("Gagal terhubung (P2P terblokir / Masalah Firewall/NAT).", 'error');
+                        setStatus("Gagal P2P. Mencoba menyambung ulang...", 'error');
+                        if (pc.restartIce) pc.restartIce();
                     } else if (state === 'disconnected') {
-                        setStatus("Koneksi P2P terputus.", 'error');
+                        setStatus("Koneksi P2P terputus. Memeriksa ulang jalur...", 'error');
                     }
                 };
             }
