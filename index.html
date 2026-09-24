@@ -169,6 +169,7 @@
             padding: 12px;
             border-radius: 12px;
             border: 1px solid #334155;
+            position: relative;
         }
 
         .video-box h3 {
@@ -184,6 +185,31 @@
             background-color: #000;
             border-radius: 8px;
             object-fit: cover;
+        }
+
+        .play-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.85);
+            border-radius: 12px;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #38bdf8;
+            font-weight: 600;
+            cursor: pointer;
+            z-index: 10;
+            padding: 20px;
+            backdrop-filter: blur(4px);
+        }
+
+        .play-overlay span.play-icon {
+            font-size: 48px;
+            margin-bottom: 8px;
         }
     </style>
 </head>
@@ -213,9 +239,13 @@
                 <h3>Kamera Anda</h3>
                 <video id="local-video" autoplay playsinline muted></video>
             </div>
-            <div class="video-box">
+            <div class="video-box" id="remote-box">
                 <h3>Kamera Teman</h3>
                 <video id="remote-video" autoplay playsinline></video>
+                <div class="play-overlay" id="play-overlay">
+                    <span class="play-icon">▶</span>
+                    <span>Klik Di Sini Untuk Memutar Video Teman</span>
+                </div>
             </div>
         </div>
     </div>
@@ -223,6 +253,8 @@
     <script>
         const localVideo = document.getElementById('local-video');
         const remoteVideo = document.getElementById('remote-video');
+        const remoteBox = document.getElementById('remote-box');
+        const playOverlay = document.getElementById('play-overlay');
         const myIdElement = document.getElementById('my-id');
         const remoteIdInput = document.getElementById('remote-id');
         const callBtn = document.getElementById('call-btn');
@@ -232,6 +264,7 @@
 
         let localStream = null;
         let currentCall = null;
+        let currentDataConn = null;
 
         // Update status visual
         function setStatus(msg, type = 'info') {
@@ -257,23 +290,20 @@
                 setStatus("Error: Akses Kamera/Mikrofon Ditolak!", 'error');
             });
 
-        // 2. Inisialisasi PeerJS dengan STUN & TURN Server (Sistem Anti-Block Firewall & NAT)
+        // 2. Inisialisasi PeerJS dengan STUN & TURN Server
         let peer = null;
 
         function initPeer() {
             peer = new Peer({
                 config: {
                     iceServers: [
-                        // Google STUN Servers
                         { urls: 'stun:stun.l.google.com:19302' },
                         { urls: 'stun:stun1.l.google.com:19302' },
                         { urls: 'stun:stun2.l.google.com:19302' },
                         { urls: 'stun:stun3.l.google.com:19302' },
                         { urls: 'stun:stun4.l.google.com:19302' },
-                        // Mozilla & Twilio STUN Servers
                         { urls: 'stun:stun.services.mozilla.com' },
                         { urls: 'stun:global.stun.twilio.com:3478' },
-                        // OpenRelay Free TURN Servers (Estafet data P2P jika UDP/NAT terblokir)
                         {
                             urls: 'turn:openrelay.metered.ca:80',
                             username: 'openrelay',
@@ -299,6 +329,11 @@
                 setStatus("Siap melakukan atau menerima panggilan.", 'success');
             });
 
+            // Handle incoming Data Connection (Sinkronisasi Tutup Panggilan)
+            peer.on('connection', conn => {
+                setupDataConnection(conn);
+            });
+
             // 3. Menangani Error PeerJS
             peer.on('error', err => {
                 console.error("PeerJS Error:", err);
@@ -310,7 +345,7 @@
                 } else {
                     setStatus("Error Koneksi: " + err.type, 'error');
                 }
-                resetCallUI();
+                endCall(false);
             });
 
             // 4. Logika Menerima Panggilan
@@ -322,7 +357,7 @@
 
                 const angkat = confirm("Ada panggilan masuk! Angkat panggilan?");
                 if (angkat) {
-                    if (currentCall) currentCall.close();
+                    if (currentCall) endCall(false);
 
                     currentCall = call;
                     call.answer(localStream);
@@ -352,91 +387,147 @@
             setStatus("Memanggil " + remoteId + "...", 'info');
             callBtn.disabled = true;
 
-            if (currentCall) currentCall.close();
+            if (currentCall) endCall(false);
 
+            // Buka Data Connection untuk sinyal kontrol (hangup)
+            const conn = peer.connect(remoteId);
+            setupDataConnection(conn);
+
+            // Buka Media Call
             const call = peer.call(remoteId, localStream);
             currentCall = call;
             setupCallListeners(call);
         });
+
+        // Sinkronisasi Sinyal Data (Hangup)
+        function setupDataConnection(conn) {
+            currentDataConn = conn;
+            conn.on('data', data => {
+                console.log("Data sinyal diterima:", data);
+                if (data && data.type === 'hangup') {
+                    setStatus("Panggilan diakhiri oleh teman.", 'info');
+                    endCall(false);
+                }
+            });
+            conn.on('close', () => {
+                endCall(false);
+            });
+        }
 
         // Handler terpusat untuk alur panggilan
         function setupCallListeners(call) {
             showCallActiveUI();
             setStatus("Menghubungkan media (Mencari Jalur P2P/TURN)...", 'info');
 
-            // Terima remote stream
             call.on('stream', remoteStream => {
                 console.log("Remote stream diterima:", remoteStream);
                 remoteVideo.srcObject = remoteStream;
+
+                remoteVideo.onloadedmetadata = () => {
+                    playRemoteVideo();
+                };
                 playRemoteVideo();
             });
 
-            // Pantau status koneksi WebRTC P2P (ICE Connection State)
+            // Pantau status WebRTC P2P
             if (call.peerConnection) {
                 const pc = call.peerConnection;
-
-                pc.onicecandidate = event => {
-                    if (event.candidate) {
-                        console.log("ICE Candidate ditemukan:", event.candidate.type, event.candidate.candidate);
-                    }
-                };
 
                 pc.oniceconnectionstatechange = () => {
                     const state = pc.iceConnectionState;
                     console.log("ICE Connection State:", state);
                     if (state === 'connected' || state === 'completed') {
                         setStatus("Panggilan terhubung! Video & Audio aktif.", 'success');
+                        playRemoteVideo();
                     } else if (state === 'checking') {
                         setStatus("Sedang memverifikasi jalur P2P / STUN / TURN...", 'info');
                     } else if (state === 'failed') {
                         setStatus("Gagal P2P. Mencoba menyambung ulang...", 'error');
                         if (pc.restartIce) pc.restartIce();
-                    } else if (state === 'disconnected') {
-                        setStatus("Koneksi P2P terputus. Memeriksa ulang jalur...", 'error');
+                    } else if (state === 'disconnected' || state === 'closed') {
+                        setStatus("Koneksi P2P terputus.", 'error');
+                        setTimeout(() => {
+                            if (currentCall === call) endCall(false);
+                        }, 2000);
                     }
                 };
             }
 
             call.on('close', () => {
                 setStatus("Panggilan telah diakhiri.", 'info');
-                resetCallUI();
+                endCall(false);
             });
 
             call.on('error', err => {
                 console.error("Call error:", err);
                 setStatus("Terjadi kesalahan pada panggilan.", 'error');
-                resetCallUI();
+                endCall(false);
             });
         }
 
-        // Memutar video teman & menangani pembatasan autoplay browser
+        // Memutar video teman & mengontrol overlay
         function playRemoteVideo() {
+            if (!remoteVideo.srcObject) return;
+
             remoteVideo.play()
                 .then(() => {
+                    hidePlayOverlay();
                     setStatus("Panggilan terhubung! Video & Audio aktif.", 'success');
                 })
                 .catch(e => {
                     console.warn("Autoplay terblokir oleh browser:", e);
-                    setStatus("Klik pada kotak 'Kamera Teman' untuk memutar video!", 'info');
+                    showPlayOverlay();
+                    setStatus("Klik tombol '▶' pada kotak kamera teman untuk memutar video!", 'info');
                 });
         }
 
-        // Izinkan klik manual pada video teman jika terblokir autoplay
-        remoteVideo.addEventListener('click', () => {
-            if (remoteVideo.srcObject) {
-                playRemoteVideo();
+        function showPlayOverlay() {
+            playOverlay.style.display = 'flex';
+        }
+
+        function hidePlayOverlay() {
+            playOverlay.style.display = 'none';
+        }
+
+        // Event listener klik pada area video teman dan overlay
+        [remoteBox, playOverlay, remoteVideo].forEach(elem => {
+            if (elem) {
+                elem.addEventListener('click', () => {
+                    if (remoteVideo.srcObject) {
+                        playRemoteVideo();
+                    }
+                });
             }
         });
 
         // 6. Logika Menutup Panggilan (Hang Up)
         hangupBtn.addEventListener('click', () => {
+            setStatus("Panggilan diakhiri.", 'info');
+            endCall(true);
+        });
+
+        function endCall(sendSignal = true) {
+            if (sendSignal && currentDataConn) {
+                try {
+                    currentDataConn.send({ type: 'hangup' });
+                } catch (e) {
+                    console.error("Error sending hangup signal:", e);
+                }
+            }
+
             if (currentCall) {
-                currentCall.close();
+                try { currentCall.close(); } catch (e) {}
                 currentCall = null;
             }
-            setStatus("Panggilan diakhiri.", 'info');
+
+            if (currentDataConn) {
+                try { currentDataConn.close(); } catch (e) {}
+                currentDataConn = null;
+            }
+
+            hidePlayOverlay();
             resetCallUI();
-        });
+        }
 
         // 7. Utility UI
         function showCallActiveUI() {
@@ -452,6 +543,7 @@
             remoteIdInput.disabled = false;
             remoteVideo.srcObject = null;
             currentCall = null;
+            hidePlayOverlay();
         }
 
         // Copy ID Button
