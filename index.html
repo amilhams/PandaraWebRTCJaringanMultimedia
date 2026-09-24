@@ -266,7 +266,7 @@
         let currentCall = null;
         let currentDataConn = null;
 
-        // Update status visual
+        // Update status visual & log diagnosis
         function setStatus(msg, type = 'info') {
             statusKoneksi.innerText = msg;
             if (type === 'error') statusKoneksi.style.color = '#f87171';
@@ -274,7 +274,13 @@
             else statusKoneksi.style.color = '#facc15';
         }
 
+        function logDiag(msg, type = 'info') {
+            const time = new Date().toLocaleTimeString();
+            console.log(`[${time}] [${type.toUpperCase()}] ${msg}`);
+        }
+
         setStatus("Mengakses kamera & mikrofon...");
+        logDiag("Meminta izin akses Kamera & Mikrofon...");
 
         // 1. Menyalakan Kamera & Mikrofon
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
@@ -290,7 +296,7 @@
                 setStatus("Error: Akses Kamera/Mikrofon Ditolak!", 'error');
             });
 
-        // 2. Inisialisasi PeerJS dengan STUN & TURN Server
+        // 2. Inisialisasi PeerJS dengan STUN Server Handal
         let peer = null;
 
         function initPeer() {
@@ -303,40 +309,27 @@
                         { urls: 'stun:stun3.l.google.com:19302' },
                         { urls: 'stun:stun4.l.google.com:19302' },
                         { urls: 'stun:stun.services.mozilla.com' },
-                        { urls: 'stun:global.stun.twilio.com:3478' },
-                        {
-                            urls: 'turn:openrelay.metered.ca:80',
-                            username: 'openrelay',
-                            credential: 'openrelay'
-                        },
-                        {
-                            urls: 'turn:openrelay.metered.ca:443',
-                            username: 'openrelay',
-                            credential: 'openrelay'
-                        },
-                        {
-                            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-                            username: 'openrelay',
-                            credential: 'openrelay'
-                        }
-                    ],
-                    iceCandidatePoolSize: 10
+                        { urls: 'stun:stun.stunprotocol.org:3478' }
+                    ]
                 }
             });
 
             peer.on('open', id => {
                 myIdElement.innerText = id;
                 setStatus("Siap melakukan atau menerima panggilan.", 'success');
+                logDiag("PeerJS ID Berhasil Didapatkan: " + id);
             });
 
             // Handle incoming Data Connection (Sinkronisasi Tutup Panggilan)
             peer.on('connection', conn => {
+                logDiag("Koneksi data kontrol diterima dari: " + conn.peer);
                 setupDataConnection(conn);
             });
 
             // 3. Menangani Error PeerJS
             peer.on('error', err => {
                 console.error("PeerJS Error:", err);
+                logDiag("PeerJS Error: " + err.type + " - " + err.message, 'error');
                 if (err.type === 'peer-unavailable') {
                     setStatus("ID Teman tidak ditemukan atau tidak aktif!", 'error');
                     alert("Panggilan Gagal: ID Teman tidak ditemukan atau tidak online.");
@@ -350,18 +343,21 @@
 
             // 4. Logika Menerima Panggilan
             peer.on('call', call => {
+                logDiag("Panggilan masuk dari ID: " + call.peer);
                 if (!localStream) {
                     alert("Kamera Anda belum siap.");
                     return;
                 }
 
-                const angkat = confirm("Ada panggilan masuk! Angkat panggilan?");
+                const angkat = confirm("Ada panggilan masuk dari " + call.peer + "! Angkat panggilan?");
                 if (angkat) {
                     if (currentCall) endCall(false);
 
                     currentCall = call;
                     call.answer(localStream);
                     setupCallListeners(call);
+                } else {
+                    logDiag("Panggilan ditolak oleh pengguna lokal.");
                 }
             });
         }
@@ -385,6 +381,7 @@
             }
 
             setStatus("Memanggil " + remoteId + "...", 'info');
+            logDiag("Mencoba memanggil ID Teman: " + remoteId);
             callBtn.disabled = true;
 
             if (currentCall) endCall(false);
@@ -403,13 +400,14 @@
         function setupDataConnection(conn) {
             currentDataConn = conn;
             conn.on('data', data => {
-                console.log("Data sinyal diterima:", data);
+                logDiag("Sinyal kontrol diterima: " + JSON.stringify(data));
                 if (data && data.type === 'hangup') {
                     setStatus("Panggilan diakhiri oleh teman.", 'info');
                     endCall(false);
                 }
             });
             conn.on('close', () => {
+                logDiag("Data connection ditutup.");
                 endCall(false);
             });
         }
@@ -417,10 +415,11 @@
         // Handler terpusat untuk alur panggilan
         function setupCallListeners(call) {
             showCallActiveUI();
-            setStatus("Menghubungkan media (Mencari Jalur P2P/TURN)...", 'info');
+            setStatus("Menghubungkan media (Mencari Jalur P2P)...", 'info');
+            logDiag("Memulai sesi WebRTC RTCPeerConnection...");
 
             call.on('stream', remoteStream => {
-                console.log("Remote stream diterima:", remoteStream);
+                logDiag("Remote media stream diterima dari teman!");
                 remoteVideo.srcObject = remoteStream;
 
                 remoteVideo.onloadedmetadata = () => {
@@ -433,22 +432,27 @@
             if (call.peerConnection) {
                 const pc = call.peerConnection;
 
+                pc.onicecandidate = event => {
+                    if (event.candidate) {
+                        logDiag("Kandidat Jalur (ICE Candidate) ditemukan: " + event.candidate.type);
+                    }
+                };
+
                 pc.oniceconnectionstatechange = () => {
                     const state = pc.iceConnectionState;
-                    console.log("ICE Connection State:", state);
+                    logDiag("Status Jaringan P2P (ICE State): " + state);
+
                     if (state === 'connected' || state === 'completed') {
                         setStatus("Panggilan terhubung! Video & Audio aktif.", 'success');
                         playRemoteVideo();
                     } else if (state === 'checking') {
-                        setStatus("Sedang memverifikasi jalur P2P / STUN / TURN...", 'info');
+                        setStatus("Sedang memverifikasi jalur P2P / STUN...", 'info');
                     } else if (state === 'failed') {
-                        setStatus("Gagal P2P. Mencoba menyambung ulang...", 'error');
-                        if (pc.restartIce) pc.restartIce();
+                        setStatus("Gagal terhubung ke teman. Pastikan kedua perangkat terhubung ke internet.", 'error');
+                        logDiag("Koneksi P2P Gagal (ICE Failed).", 'error');
                     } else if (state === 'disconnected' || state === 'closed') {
                         setStatus("Koneksi P2P terputus.", 'error');
-                        setTimeout(() => {
-                            if (currentCall === call) endCall(false);
-                        }, 2000);
+                        logDiag("Koneksi P2P terputus.", 'error');
                     }
                 };
             }
