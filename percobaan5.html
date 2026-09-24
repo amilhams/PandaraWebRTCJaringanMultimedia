@@ -1,0 +1,31 @@
+<html>
+<head>
+  <base target="_blank">
+  <title>Audio Visualizer</title>
+  <style>
+    /* Memberikan warna gelap pada canvas agar visualizer lebih mencolok */
+    canvas {
+      width: 100%;
+      max-width: 600px;
+      height: 250px;
+      background-color: #222; 
+      border-radius: 8px;
+      margin-top: 15px;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <h1>Tugas 5: Audio Visualizer</h1>
+    <p class="warning">Gunakan headphone agar tidak terjadi feedback/storing.</p>
+    
+    <p id="status-mikrofon" style="color: green; font-weight: bold;"></p>
+    
+    <!-- Canvas untuk menampilkan grafik suara -->
+    <canvas id="visualizer"></canvas>
+  </div>
+  
+  <script src="js/main5.js"></script>
+</body>
+</html>

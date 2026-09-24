@@ -1,0 +1,52 @@
+<html>
+<head>
+  <base target="_blank">
+  <title>getUserMedia + CSS filters</title>
+  <style>
+    /* CSS bawaan dari modul */
+    .none { filter: none; }
+    .blur { filter: blur(3px); }
+    .grayscale { filter: grayscale(1); }
+    .invert { filter: invert(1); }
+    .sepia { filter: sepia(1); }
+    
+    /* Tambahan tugas praktikum: Brightness dan Flip Horizontal */
+    .brightness { filter: brightness(1.5); }
+    .flip { transform: scaleX(-1); }
+
+    button#snapshot {
+      margin: 0 10px 25px 0;
+      width: 110px;
+    }
+    video {
+      object-fit: cover;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <h1>Percobaan 3: Filter</h1>
+    
+    <video autoplay playsinline></video>
+    <br><br>
+    
+    <label for="filter">Filter: </label>
+    <select id="filter">
+      <option value="none">None</option>
+      <option value="blur">Blur</option>
+      <option value="grayscale">Grayscale</option>
+      <option value="invert">Invert</option>
+      <option value="sepia">Sepia</option>
+      <!-- Opsi tambahan dari tugas -->
+      <option value="brightness">Brightness</option>
+      <option value="flip">Flip Horizontal</option>
+    </select>
+    
+    <button id="snapshot">Take snapshot</button>
+    <br><br>
+    <canvas></canvas>
+  </div>
+  
+  <script src="js/main3.js"></script>
+</body>
+</html>
